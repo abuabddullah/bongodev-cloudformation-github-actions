@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub Actions + CloudFormation + OIDC — চূড়ান্ত গাইড</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#1d1c1a; --muted:#6b675f; --line:#e3e0d8;
+  --accent:#e8770c; --accent-soft:#fdf0e3; --blue:#2563a8; --blue-soft:#e8f0fa;
+  --green:#1f7a4c; --green-soft:#e5f4ec; --red:#b3261e; --red-soft:#fbeaea;
+  --purple:#6b3fa0; --purple-soft:#f1eafa; --code:#f1efe9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#151514; --panel:#1e1e1c; --ink:#ecebe6; --muted:#a29e94; --line:#33322e;
+    --accent:#f59a3c; --accent-soft:#3a2a18; --blue:#7fb0e8; --blue-soft:#1b2838;
+    --green:#5cc48d; --green-soft:#16291f; --red:#f08a82; --red-soft:#341b1a;
+    --purple:#b893e6; --purple-soft:#271d33; --code:#262523;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hind Siliguri",system-ui,sans-serif;font-size:17px;line-height:1.65}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.86em}
+code{background:var(--code);padding:.08em .38em;border-radius:4px}
+a{color:var(--blue)}
+.wrap{display:grid;grid-template-columns:260px 1fr;max-width:1240px;margin:0 auto;gap:28px;padding:24px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}.side{position:static!important;max-height:none!important}}
+.side{position:sticky;top:20px;align-self:start;max-height:calc(100vh - 40px);overflow:auto}
+.side nav a{display:block;padding:5px 10px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:15px}
+.side nav a:hover{background:var(--accent-soft)}
+.side nav .grp{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 10px 4px}
+.progress{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar>div{height:100%;background:var(--accent);width:0;transition:width .3s}
+h1{font-size:34px;line-height:1.2;margin:0 0 6px}
+h2{font-size:26px;margin:44px 0 12px;padding-top:8px;border-top:2px solid var(--ink)}
+h3{font-size:19px;margin:0}
+.lede{color:var(--muted);font-size:18px;margin:0 0 20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+.config{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:700px){.config{grid-template-columns:1fr}}
+.config label{font-size:14px;color:var(--muted);display:block;margin-bottom:4px}
+.config input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-family:"JetBrains Mono",monospace;font-size:14px}
+.config input:focus{outline:2px solid var(--accent);border-color:transparent}
+.b{font-weight:600;color:var(--accent);font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--accent-soft);padding:.05em .35em;border-radius:4px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}
+.step.done{border-color:var(--green)}
+.step.done .shead{background:var(--green-soft)}
+.shead{display:flex;gap:12px;align-items:center;padding:12px 16px;cursor:pointer;user-select:none}
+.shead input{width:20px;height:20px;accent-color:var(--green);flex:none;cursor:pointer}
+.snum{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--muted);flex:none;width:58px}
+.shead h3{flex:1}
+.chev{color:var(--muted);transition:transform .2s}
+.step.open .chev{transform:rotate(90deg)}
+.sbody{display:none;padding:2px 20px 18px 20px;border-top:1px solid var(--line)}
+.step.open .sbody{display:block}
+.sbody ol,.sbody ul{padding-left:22px;margin:10px 0}
+.sbody li{margin:4px 0}
+.why,.say,.rec,.warn,.shot{border-radius:8px;padding:10px 14px;margin:12px 0;font-size:16px}
+.why{background:var(--blue-soft);border-left:4px solid var(--blue)}
+.say{background:var(--purple-soft);border-left:4px solid var(--purple)}
+.rec{background:var(--accent-soft);border-left:4px solid var(--accent)}
+.warn{background:var(--red-soft);border-left:4px solid var(--red)}
+.shot{background:var(--green-soft);border-left:4px solid var(--green)}
+.tag{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:2px}
+.why .tag{color:var(--blue)} .say .tag{color:var(--purple)} .rec .tag{color:var(--accent)} .warn .tag{color:var(--red)} .shot .tag{color:var(--green)}
+.checkpoint{background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 16px;margin:16px 0;font-weight:600}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;margin:8px 0;position:relative;line-height:1.5}
+.copy{position:absolute;top:8px;right:8px;font-family:"Hind Siliguri",sans-serif;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:3px 10px;cursor:pointer}
+.copy:hover{border-color:var(--accent)}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:10px 0}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.scene{display:grid;grid-template-columns:64px 1fr 120px;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.scene:last-child{border:0}
+.scene .n{font-family:"JetBrains Mono",monospace;font-weight:600;color:var(--accent)}
+.scene .t{color:var(--muted);font-size:14px;text-align:right}
+.diagram svg{width:100%;height:auto;display:block}
+.small{font-size:14px;color:var(--muted)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside class="side">
+  <div class="progress">
+    <div style="display:flex;justify-content:space-between;font-size:14px"><b>অগ্রগতি</b><span id="pct">0 / 0</span></div>
+    <div class="bar"><div id="barfill"></div></div>
+  </div>
+  <nav>
+    <div class="grp">শুরু</div>
+    <a href="#setup">আপনার মানগুলো</a>
+    <a href="#video">ভিডিও প্ল্যান</a>
+    <a href="#arch">আর্কিটেকচার ও OIDC</a>
+    <div class="grp">কাজ</div>
+    <a href="#part-a">Part A — GitHub repo ও ID</a>
+    <a href="#part-b">Part B — AWS IAM + OIDC</a>
+    <a href="#part-c">Part C — Variables ও push</a>
+    <a href="#part-d">Part D — ডিপ্লয় যাচাই</a>
+    <a href="#part-e">Part E — দ্বিতীয় push (update)</a>
+    <a href="#part-f">Part F — প্রমাণ ও Cleanup</a>
+    <div class="grp">শেখা</div>
+    <a href="#code">ফাইলগুলো লাইন ধরে</a>
+    <a href="#trouble">এরর হলে</a>
+    <a href="#shots">স্ক্রিনশট লিস্ট</a>
+  </nav>
+  <div class="btnrow"><button class="btn" id="expandAll">সব খুলুন</button><button class="btn" id="reset">টিক মুছুন</button></div>
+</aside>
+
+<main>
+<h1>Git push → GitHub Actions → CloudFormation → Ubuntu + Nginx</h1>
+<p class="small" style="margin:0 0 10px">চূড়ান্ত সংস্করণ: পুরো লাব একবার করে, যেখানে যেখানে আটকেছি আর যা শিখেছি, সব এখানে যোগ করা।</p>
+<p class="lede">এই লাবে আপনি নিজে AWS-এ গিয়ে কোনো সার্ভার বানাবেন না। শুধু <code>git push</code> করবেন, বাকিটা GitHub Actions নিজে করবে। প্রতিটা ধাপে আছে <b>কী করবেন</b>, <span style="color:var(--blue)">কেন</span>, আর <span style="color:var(--purple)">ভিডিওতে কী বলবেন</span>।</p>
+
+<div class="rec"><span class="tag">অ্যাসাইনমেন্ট থেকে যা বদলানো হয়েছে</span>
+<b>Region:</b> README-তে লেখা "us-west-2 (N. Virginia)", কিন্তু N. Virginia আসলে <code>us-east-1</code>। আমরা <b>us-east-1</b> ব্যবহার করছি। <code>deploy.yml</code>-এ Region কোডে লেখা নেই, সেটা <code>vars.AWS_REGION</code> থেকে আসে। তাই শুধু GitHub variable-এ <code>us-east-1</code> দিলেই হবে। শুধু cleanup-এর CLI কমান্ডে <code>us-west-2</code> লেখা আছে, নিচের গাইডে সেটা ঠিক করা।<br>
+<b>OIDC subject:</b> README-তে নতুন রিপোর subject ফরম্যাট নিয়ে যা লেখা আছে সেটা ঠিক। GitHub-এর অফিশিয়াল ঘোষণা অনুযায়ী <b>১৫ জুলাই ২০২৬-এর পরে বানানো রিপোতে</b> subject হয় <code>repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/main</code>।
+</div>
+
+<!-- SETUP -->
+<h2 id="setup">১. আপনার মানগুলো বসান</h2>
+<p>মানগুলো বসালে নিচের trust policy, API লিংক, Role ARN আর git কমান্ড নিজে থেকেই তৈরি হবে। Owner ID আর Repo ID পাবেন <a href="#s2">Step 2</a>-এ।</p>
+<div class="card">
+  <div class="config">
+    <div><label>AWS Account ID (১২ সংখ্যা)</label><input id="cfg-account" placeholder="123456789012" maxlength="12"></div>
+    <div><label>GitHub username (owner)</label><input id="cfg-owner" value="abuabddullah"></div>
+    <div><label>AWS Region</label><input id="cfg-region" value="us-east-1"></div>
+    <div><label>Owner ID (সংখ্যা, Step 2)</label><input id="cfg-ownerid" placeholder="e.g. 98765432"></div>
+    <div><label>Repo ID (সংখ্যা, Step 2)</label><input id="cfg-repoid" placeholder="e.g. 1234567890"></div>
+    <div><label>Repo নাম</label><input id="cfg-repo" value="bongodev-cloudformation-github-actions"></div>
+  </div>
+  <p class="small" style="margin:10px 0 0">এই মানগুলো শুধু আপনার ব্রাউজারে থাকে, কোথাও পাঠানো হয় না।</p>
+</div>
+
+<!-- VIDEO -->
+<h2 id="video">২. ভিডিও রেকর্ডিং প্ল্যান</h2>
+<div class="warn"><span class="tag">এই লাবে blur লাগবে বেশি জায়গায়</span>
+<b>Account ID</b> আসবে কনসোলের উপরের ডানদিকে, trust policy-তে, <b>Role ARN</b>-এ, GitHub-এর Variables পেজে, আর Actions log-এর <b>"Confirm AWS identity"</b> ধাপে। এই ধাপ নিজেই Account আর ARN প্রিন্ট করে। EC2-র public IP লাব শেষে মুছে যাবে, তাই সেটা দেখালে সমস্যা নেই।<br><br>
+<b>জেনে রাখুন:</b> রিপো Public হলে Actions-এর log-ও পাবলিক থাকে, অর্থাৎ যে কেউ "Confirm AWS identity"-র আউটপুটে আপনার Account ID দেখতে পারবে। Account ID নিজে কোনো password বা key না, আর এর সাথে কোনো credential প্রকাশ পায় না, তাই এটা লাবের ক্ষেত্রে মেনে নেওয়ার মতো। তবে চাইলে জমা দেওয়ার পর পুরনো workflow run-গুলো মুছে দিতে পারেন (<a href="#s14">Step 14</a>)।<br><br>
+<b>কখনো স্ক্রিনে আনবেন না:</b> AWS access key, secret, GitHub token, password।
+</div>
+<div class="rec"><span class="tag">রেকর্ডিং সেটআপ</span>
+<ul style="margin:4px 0">
+<li>স্ক্রিনে দুটো জিনিস থাকবে: একটা Chrome window যেখানে GitHub আর AWS আলাদা ট্যাবে খোলা, আর <b>VS Code</b> যার ভেতরের টার্মিনালে git চালাবেন। VS Code-এর ফন্ট বড় করুন (<code>Ctrl + =</code>), টার্মিনালেরটাও।</li>
+<li>এই পেজটা দ্বিতীয় মনিটরে বা ফোনে খোলা রাখুন।</li>
+<li>অপেক্ষার সময়গুলোয় রেকর্ডিং <b>pause</b> করুন: Actions run চলার ৩–৫ মিনিট, Nginx চালু হওয়ার ২–৪ মিনিট, আর stack delete হওয়ার সময়।</li>
+</ul></div>
+<div class="card">
+<div class="scene"><div class="n">S0</div><div><b>ভূমিকা:</b> আগের লাবে YAML হাতে আপলোড করেছিলাম, এবার সেই কাজটা অটোমেট করব। আর্কিটেকচার আর OIDC-র ছবি দেখিয়ে শুরু করুন।</div><div class="t">~৩ মিনিট</div></div>
+<div class="scene"><div class="n">S1</div><div><b>Part A:</b> খালি GitHub repo বানানো, তারপর Owner ID আর Repo ID বের করা।</div><div class="t">~৩ মিনিট</div></div>
+<div class="scene"><div class="n">S2</div><div><b>Part B:</b> IAM-এ OIDC provider যোগ করা, পলিসি বানানো, role বানানো, আর trust policy এডিট করা। <b>BLUR বেশি</b>।</div><div class="t">~৮ মিনিট</div></div>
+<div class="scene"><div class="n">S3</div><div><b>Part C:</b> GitHub Variables সেট করা, তারপর VS Code থেকে <code>git push</code>।</div><div class="t">~৪ মিনিট</div></div>
+<div class="scene"><div class="n">S4</div><div><b>Part D:</b> Actions run চলা দেখা, CloudFormation-এ CREATE_COMPLETE, তারপর ব্রাউজারে ওয়েবসাইট খোলা।</div><div class="t">~৫ মিনিট</div></div>
+<div class="scene"><div class="n">S5</div><div><b>Part E:</b> একটা tag বদলে push করা, তারপর UPDATE_COMPLETE দেখা। Instance ID যে একই আছে সেটা মিলিয়ে দেখানো।</div><div class="t">~৪ মিনিট</div></div>
+<div class="scene"><div class="n">S6</div><div><b>Part F:</b> Stack delete করা, EC2 terminated কিনা দেখা, workflow disable করা। সব স্ক্রিনশট নেওয়ার পরে রেকর্ড করবেন।</div><div class="t">~৩ মিনিট</div></div>
+</div>
+
+<!-- ARCH -->
+<h2 id="arch">৩. আর্কিটেকচার আর OIDC কীভাবে কাজ করে</h2>
+<div class="card diagram">
+<svg viewBox="0 0 760 470" xmlns="http://www.w3.org/2000/svg" font-family="Hind Siliguri, sans-serif">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+  <g font-size="14">
+    <rect x="20" y="20" width="190" height="56" rx="10" fill="var(--bg)" stroke="var(--line)"/>
+    <text x="115" y="44" text-anchor="middle" font-weight="600" fill="var(--ink)">আপনার VS Code</text>
+    <text x="115" y="64" text-anchor="middle" fill="var(--muted)" font-size="12">git push origin main</text>
+
+    <rect x="285" y="20" width="190" height="56" rx="10" fill="var(--purple-soft)" stroke="var(--purple)"/>
+    <text x="380" y="44" text-anchor="middle" font-weight="600" fill="var(--ink)">GitHub repo</text>
+    <text x="380" y="64" text-anchor="middle" fill="var(--muted)" font-size="12">yaml + deploy.yml</text>
+
+    <rect x="550" y="20" width="190" height="56" rx="10" fill="var(--purple-soft)" stroke="var(--purple)"/>
+    <text x="645" y="44" text-anchor="middle" font-weight="600" fill="var(--ink)">Actions runner</text>
+    <text x="645" y="64" text-anchor="middle" fill="var(--muted)" font-size="12">ubuntu-latest</text>
+
+    <rect x="550" y="150" width="190" height="66" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="645" y="174" text-anchor="middle" font-weight="600" fill="var(--ink)">AWS STS + IAM role</text>
+    <text x="645" y="194" text-anchor="middle" fill="var(--muted)" font-size="12">trust policy মেলালে</text>
+    <text x="645" y="208" text-anchor="middle" fill="var(--muted)" font-size="12">~১ ঘণ্টার credential</text>
+
+    <rect x="285" y="150" width="190" height="66" rx="10" fill="var(--blue-soft)" stroke="var(--blue)"/>
+    <text x="380" y="174" text-anchor="middle" font-weight="600" fill="var(--ink)">CloudFormation</text>
+    <text x="380" y="194" text-anchor="middle" fill="var(--muted)" font-size="12">stack: bongodev-github-iac-dev</text>
+
+    <rect x="200" y="280" width="360" height="160" rx="12" fill="none" stroke="var(--green)" stroke-dasharray="5 4"/>
+    <text x="380" y="302" text-anchor="middle" fill="var(--green)" font-size="13" font-weight="600">VPC 10.42.0.0/16</text>
+    <rect x="225" y="315" width="310" height="110" rx="10" fill="var(--green-soft)" stroke="var(--green)"/>
+    <text x="380" y="337" text-anchor="middle" fill="var(--muted)" font-size="12">Public subnet 10.42.1.0/24 · IGW · Route table · SG: শুধু 80</text>
+    <rect x="290" y="350" width="180" height="60" rx="8" fill="var(--panel)" stroke="var(--green)"/>
+    <text x="380" y="374" text-anchor="middle" font-weight="600" fill="var(--ink)">Ubuntu 24.04 t3.micro</text>
+    <text x="380" y="394" text-anchor="middle" fill="var(--muted)" font-size="12">User Data → Nginx</text>
+
+    <rect x="590" y="355" width="150" height="50" rx="10" fill="var(--bg)" stroke="var(--line)"/>
+    <text x="665" y="377" text-anchor="middle" font-weight="600" fill="var(--ink)">ব্রাউজার</text>
+    <text x="665" y="395" text-anchor="middle" fill="var(--muted)" font-size="12">http://PUBLIC-IP</text>
+  </g>
+  <g stroke="var(--muted)" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+    <line x1="210" y1="48" x2="283" y2="48"/>
+    <line x1="475" y1="48" x2="548" y2="48"/>
+    <line x1="625" y1="76" x2="625" y2="148"/>
+    <line x1="665" y1="148" x2="665" y2="78"/>
+    <path d="M550 110 Q 450 110 400 148"/>
+    <line x1="380" y1="216" x2="380" y2="278"/>
+    <line x1="470" y1="380" x2="588" y2="380"/>
+  </g>
+  <g font-size="11.5" fill="var(--ink)" font-family="JetBrains Mono, monospace">
+    <text x="222" y="40">push</text>
+    <text x="482" y="40">trigger</text>
+    <text x="520" y="128">① JWT</text>
+    <text x="672" y="118">② temp creds</text>
+    <text x="415" y="102">③ deploy</text>
+    <text x="388" y="252">④ create/update</text>
+    <text x="490" y="372">HTTP 80</text>
+  </g>
+</svg>
+</div>
+<div class="why"><span class="tag">OIDC সহজ ভাষায়</span>
+পুরনো পদ্ধতিতে AWS-এর <b>স্থায়ী access key</b> GitHub Secrets-এ রাখতে হতো। সেই key কখনো ফাঁস হলে, সেটা বাতিল না করা পর্যন্ত যে কেউ আপনার অ্যাকাউন্টে ঢুকতে পারত।<br><br>
+OIDC-তে কোনো key রাখা হয় না, কাজ হয় এভাবে:
+<ol style="margin:6px 0">
+<li>Workflow চলার সময় GitHub একটা <b>সই করা টোকেন (JWT)</b> তৈরি করে। এই টোকেনে লেখা থাকে কোন repo, কোন branch থেকে এটা এসেছে (<code>sub</code>), আর কার জন্য (<code>aud = sts.amazonaws.com</code>)।</li>
+<li>Runner সেই টোকেন AWS STS-কে দেয় (<code>AssumeRoleWithWebIdentity</code>)।</li>
+<li>AWS তিনটা জিনিস যাচাই করে: (ক) টোকেনটা আসলেই GitHub-এর সই করা কিনা, যার জন্য IAM-এ OIDC provider লাগে; (খ) <code>aud</code> মেলে কিনা; (গ) <code>sub</code> হুবহু আপনার repo আর <code>main</code> branch-এর সাথে মেলে কিনা, যেটা trust policy-তে লেখা থাকে।</li>
+<li>সব মিললে AWS প্রায় <b>১ ঘণ্টার</b> জন্য একটা অস্থায়ী credential দেয়, যা নিজে থেকেই মেয়াদ শেষে অকেজো হয়ে যায়।</li>
+</ol>
+অর্থাৎ চুরি করার মতো কোনো key কোথাও জমা থাকে না। অন্য কোনো repo বা অন্য branch থেকে চেষ্টা করলে <code>sub</code> মিলবে না, তাই AWS ঢুকতে দেবে না।
+</div>
+<div class="rec"><span class="tag">একটা উদাহরণে OIDC</span>
+অফিসে একজন ডেলিভারি ম্যান আসে। <b>পুরনো পদ্ধতি (access key):</b> তাকে অফিসের একটা স্থায়ী চাবি দিয়ে দেওয়া। চাবি হারালে বা কেউ কপি করে নিলে, তালা না বদলানো পর্যন্ত যে কেউ ঢুকতে পারবে। <b>OIDC পদ্ধতি:</b> সে আসে কোম্পানির <b>সিল-মারা পরিচয়পত্র</b> নিয়ে। রিসেপশন আগে থেকেই কোম্পানির সিল চেনে, আর তার কাছে একটা তালিকা আছে কোন দোকানের লোক ঢুকতে পারবে। সব মিললে তাকে দেয় <b>১ ঘণ্টার ভিজিটর পাস</b>।
+<table style="margin-top:8px"><tr><th>গল্পে</th><th>লাবে</th></tr>
+<tr><td>ডেলিভারি ম্যান</td><td>GitHub Actions runner</td></tr>
+<tr><td>সিল-মারা পরিচয়পত্র</td><td>GitHub-এর দেওয়া JWT টোকেন</td></tr>
+<tr><td>"কোন দোকান থেকে এসেছে"</td><td>টোকেনের <code>sub</code> (repo আর branch)</td></tr>
+<tr><td>রিসেপশন সিল চেনে</td><td>IAM <b>OIDC Identity Provider</b> (Step 3)</td></tr>
+<tr><td>"কে ঢুকতে পারবে" তালিকা</td><td>Role-এর <b>Trust policy</b> (Step 4B)</td></tr>
+<tr><td>ভিজিটর পাস দিয়ে কোন কোন রুমে যাওয়া যাবে</td><td>Role-এর <b>Permission policy</b> (Step 4A)</td></tr>
+<tr><td>১ ঘণ্টার পাস</td><td>STS-এর দেওয়া অস্থায়ী credential</td></tr></table>
+</div>
+<div class="why"><span class="tag">একটা সাধারণ ভুল ধারণা: "ব্রাউজারে ডিপ্লয় হয়"</span>ডিপ্লয় হয় <b>AWS-এর ভেতরে</b>, ব্রাউজার শুধু ফলাফল দেখে। CloudFormation আপনার অ্যাকাউন্টে একটা <b>VPC</b> বানায়, যেটা AWS-এর ভেতরে আপনার আলাদা প্রাইভেট নেটওয়ার্ক। তার ভেতরে বানায় subnet, Internet Gateway, security group আর EC2। EC2 চালু হয়ে Nginx বসায়। এরপর আপনার ব্রাউজার ইন্টারনেট দিয়ে <code>http://PUBLIC-IP</code>-এ যায়, আর port 80-এর খোলা দরজা দিয়ে সেই সার্ভারে পৌঁছায়।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন (S0)</span>"আগের লাবে CloudFormation-এ YAML হাতে আপলোড করেছিলাম। আজ সেই হাতের কাজটা বাদ দেব। YAML থাকবে GitHub-এ, আর আমি push করলেই GitHub Actions নিজে AWS-এ গিয়ে সার্ভার বানিয়ে দেবে বা আপডেট করবে। কোনো AWS password বা access key GitHub-এ রাখছি না। OIDC দিয়ে GitHub প্রতিবার AWS-এর কাছ থেকে এক ঘণ্টার জন্য অস্থায়ী অনুমতি নেবে। একে বলে Infrastructure as Code, আর এখানে Git হলো সব কিছুর source of truth।"</div>
+
+<!-- PART A -->
+<h2 id="part-a">Part A — GitHub repo আর ID</h2>
+
+<div class="step" data-id="s0"><div class="shead"><input type="checkbox"><span class="snum">Step 0</span><h3>প্রজেক্ট ফোল্ডার VS Code-এ খুলুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>ZIP খুলুন। ভেতরে <code>Homework-IAC-with-CloudFormation-GitHubActions</code> ফোল্ডার পাবেন।</li>
+<li>VS Code-এ <b>File → Open Folder</b> দিয়ে এই ফোল্ডারটা খুলুন। এটাই হবে আপনার রিপোর root।</li>
+<li>বাঁ পাশে <code>.github/workflows/deploy.yml</code> দেখা যাচ্ছে কিনা দেখুন। Windows-এ সাধারণত ডট দিয়ে শুরু হওয়া ফোল্ডার দেখা যায়।</li>
+<li><b>Terminal → New Terminal</b> খুলে লিখুন <code>git --version</code>। Windows-এ টার্মিনালের ধরন Git Bash রাখলে README-র কমান্ডগুলো হুবহু চলবে।</li></ol>
+<div class="why"><span class="tag">কেন</span><code>.github/workflows/</code> ফোল্ডারটা GitHub-এর জন্য বিশেষ। শুধু এই জায়গার <code>.yml</code> ফাইলকেই GitHub workflow হিসেবে চেনে। পাথে একটা অক্ষর ভুল হলেও workflow কখনো চালু হবে না।</div>
+</div></div>
+
+<div class="step" data-id="s1"><div class="shead"><input type="checkbox"><span class="snum">Step 1</span><h3>খালি GitHub repo বানান</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><a href="https://github.com/new">github.com/new</a> খুলুন।</li>
+<li>Repository name দিন <code>bongodev-cloudformation-github-actions</code>, আর বেছে নিন <b>Public</b>।</li>
+<li>README, .gitignore, license কোনোটাই যোগ করবেন <b>না</b>। একদম খালি রেখে <b>Create repository</b> চাপুন।</li></ol>
+<div class="why"><span class="tag">কেন খালি রাখছি</span>লোকাল ফোল্ডারে আগে থেকেই README আর .gitignore আছে। GitHub-এও এগুলো বানালে দুই জায়গায় দুটো আলাদা ইতিহাস তৈরি হবে, আর প্রথম push রিজেক্ট হবে। খালি repo-তে প্রথম push সরাসরি চলে যায়।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"রিপোটা একদম খালি রাখছি, কারণ সব ফাইল আমার কম্পিউটারে আছে। ওগুলো push করে পাঠাব।"</div>
+</div></div>
+
+<div class="step" data-id="s2" id="s2"><div class="shead"><input type="checkbox"><span class="snum">Step 2</span><h3>Owner ID আর Repo ID বের করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>ব্রাউজারে এই লিংক খুলুন: <a id="apiurl" href="#" target="_blank" rel="noopener"></a></li>
+<li>যে JSON আসবে তাতে:
+<ul><li>সবার উপরে থাকা <code>"id"</code> হলো <b>Repo ID</b>।</li>
+<li><code>"owner": { ... "id": ... }</code>, অর্থাৎ owner অবজেক্টের ভেতরের <code>id</code> হলো <b>Owner ID</b>।</li></ul></li>
+<li>দুটো সংখ্যাই <a href="#setup">পেজের উপরে</a> বসান। নিচে আপনার subject তৈরি হয়ে যাবে:</li></ol>
+<pre id="subject"></pre>
+<p class="small">ক্রস-চেক করতে চাইলে GitHub-এ রিপোর <b>Settings → Actions → OIDC</b> পেজ দেখুন। সেখানে immutable subject claim prefix দেখা যায়, অপশনটা থাকলে।</p>
+<div class="why"><span class="tag">কেন ID লাগছে (২০২৬-এর নতুন নিয়ম)</span>আগে subject ছিল শুধু নাম দিয়ে: <code>repo:owner/repo:ref:refs/heads/main</code>। এতে একটা ঝুঁকি ছিল। কেউ রিপো মুছে ফেললে বা নাম বদলালে, অন্য কেউ সেই একই নামে রিপো বানিয়ে আপনার AWS role-এ ঢুকতে পারত। নাম বদলানো যায়, কিন্তু সংখ্যার ID কখনো বদলায় না। তাই <b>১৫ জুলাই ২০২৬-এর পরে বানানো</b> সব রিপোতে GitHub নামের সাথে ID-ও জুড়ে দেয়। আপনার রিপো আজ বানানো, তাই নতুন ফরম্যাটই লাগবে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"রিপোর নাম বদলানো যায়, কিন্তু ID কখনো বদলায় না। তাই AWS-কে বলব শুধু এই ID-ওয়ালা রিপোকেই বিশ্বাস করতে।"</div>
+</div></div>
+
+<!-- PART B -->
+<h2 id="part-b">Part B — AWS IAM: OIDC provider, পলিসি, role</h2>
+
+<div class="step" data-id="s3"><div class="shead"><input type="checkbox"><span class="snum">Step 3</span><h3>GitHub OIDC identity provider যোগ করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<p>আপনার অ্যাকাউন্টে এখন কোনো identity provider নেই (০টা), তাই এটা নতুন করে বানাতে হবে।</p>
+<ol><li><b>IAM → Identity providers → Add provider</b> খুলুন।</li>
+<li>Provider type বেছে নিন <b>OpenID Connect</b>।</li>
+<li>Provider URL দিন <code>https://token.actions.githubusercontent.com</code>।</li>
+<li>Audience দিন <code>sts.amazonaws.com</code>, তারপর <b>Add provider</b>।</li></ol>
+<div class="why"><span class="tag">কেন</span>এই ধাপে AWS-কে বলে দেওয়া হচ্ছে যে GitHub-এর সই করা টোকেন বিশ্বাসযোগ্য। AWS এখন GitHub-এর public key দিয়ে টোকেনের সই যাচাই করতে পারবে। একটা অ্যাকাউন্টে এই provider একবারই লাগে। পরে GitHub-এর অন্য কোনো প্রজেক্টও এটা ব্যবহার করতে পারবে।</div>
+<div class="why"><span class="tag">প্রশ্নোত্তর: provider URL আর audience</span>
+<b>URL কেন <code>https://token.actions.githubusercontent.com</code>?</b> এটা GitHub Actions-এর <b>issuer</b>, মানে টোকেন যে তৈরি করে তার অফিশিয়াল পরিচয়। প্রতিটা টোকেনে লেখা থাকে <code>"iss": "https://token.actions.githubusercontent.com"</code>। AWS এই URL-এর সাথে <code>/.well-known/openid-configuration</code> যোগ করে সেখানে যায়, আর GitHub-এর <b>public key</b> কোথায় আছে সেটা খুঁজে বের করে (<code>jwks_uri</code>)। GitHub টোকেনে সই করে নিজের private key দিয়ে, আর AWS সেই সই যাচাই করে public key দিয়ে। ভিডিওতে চাইলে <code>https://token.actions.githubusercontent.com/.well-known/openid-configuration</code> ব্রাউজারে খুলে দেখাতে পারেন, এটা খোলা তথ্য।<br><br>
+<b>Audience কেন <code>sts.amazonaws.com</code>?</b> <code>aud</code> মানে টোকেনটা কার জন্য বানানো। এখানে টোকেন গ্রহণ করে AWS STS (<code>AssumeRoleWithWebIdentity</code>)। এই নিয়মের কারণে Azure বা অন্য কোনো সার্ভিসের জন্য বানানো GitHub টোকেন এনে AWS-এ ব্যবহার করা যায় না।<br><br>
+<b>এগুলো কি সবসময় একই?</b> GitHub.com থেকে AWS-এ গেলে প্রায় সবসময় একই। URL বদলায় টোকেন কে বানাচ্ছে তার উপর: GitHub Enterprise Server-এ <code>https://HOST/_services/token</code>, আর GitLab-এ <code>https://gitlab.com</code>। Audience হলো <code>configure-aws-credentials</code> action-এর ডিফল্ট মান। বদলাতে চাইলে তিন জায়গায় একসাথে বদলাতে হবে: provider, trust policy আর workflow।<br><br>
+<b>সংক্ষেপে:</b> Provider যাচাই করে টোকেনটা আসলেই GitHub-এর কিনা। Trust policy ঠিক করে কোন repo আর কোন branch ঢুকতে পারবে। Permission policy ঠিক করে ঢোকার পর কী কী করা যাবে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"এখানে AWS-কে শেখাচ্ছি GitHub-এর টোকেন কীভাবে চিনতে হয়। তবে কে ঢুকতে পারবে, সেটা এখানে ঠিক হচ্ছে না। সেটা ঠিক করবে পরের ধাপের role।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>01-oidc-provider.png</code></div>
+</div></div>
+
+<div class="step" data-id="s4a"><div class="shead"><input type="checkbox"><span class="snum">Step 4A</span><h3>Deployment পলিসি বানান</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>IAM → Policies → Create policy → JSON</b> খুলুন।</li>
+<li>VS Code-এ <code>iam/deployment-policy-lab.json</code> খুলে পুরোটা কপি করে পেস্ট করুন। এই ফাইলে কিছু বদলাতে হবে না।</li>
+<li>Next চাপুন, নাম দিন <code>bongodev-github-iac-lab-policy</code>, তারপর <b>Create policy</b>।</li></ol>
+<div class="why"><span class="tag">পলিসিতে কী আছে</span>তিনটা ভাগ: <b>CloudFormation</b> (template validate করা, change set বানানো আর চালানো, stack পড়া), <b>SSM</b> (Ubuntu-র সর্বশেষ AMI ID পড়া), আর <b>EC2/VPC</b> (VPC, subnet, IGW, route, SG, instance বানানো আর মোছা)।<br><br>এখানে <code>DeleteStack</code> নেই, তাই GitHub থেকে কেউ আপনার stack মুছতে পারবে না। আবার <code>iam:*</code>-ও নেই, তাই কেউ নিজের জন্য নতুন পারমিশন বানাতে পারবে না।<br><br><b>তবুও এটা production-মানের না:</b> EC2-এর জন্য <code>Resource: "*"</code> দেওয়া, অর্থাৎ এই role অ্যাকাউন্টের যেকোনো EC2 মুছতে পারবে। Production-এ resource বা tag দিয়ে সীমা টানা হয়, CloudFormation service role ব্যবহার করা হয়, আর ডিপ্লয়ের আগে অনুমোদন (approval) নেওয়া হয়।</div>
+<div class="warn"><span class="tag">আমাদের অভিজ্ঞতা: Next বাটন কাজ করছিল না</span>JSON ঠিক ছিল আর Errors 0 দেখাচ্ছিল, কিন্তু নিচের <b>Security / Errors / Warnings লেখাগুলো ধূসর</b> হয়ে ছিল। মানে validator তখনো যাচাই শেষ করেনি। এই ক্রমে চেষ্টা করুন:
+<ol style="margin:4px 0"><li>এডিটরের বাইরে ফাঁকা কোনো জায়গায় ক্লিক করে ২–৩ সেকেন্ড অপেক্ষা করুন, তারপর Next।</li><li>উপরে স্ক্রল করে দেখুন প্রথম লাইন শুধু <code>{</code> কিনা। ডিফল্ট টেমপ্লেট না মুছে পেস্ট করলে দুটো <code>{</code> থেকে যায়।</li><li><b>Visual</b> ট্যাবে গিয়ে আবার <b>JSON</b>-এ ফিরে আসুন।</li><li>এডিটরে Ctrl+A, তারপর Delete, তারপর আবার পেস্ট করুন।</li><li>Next চাপার পর পেজের উপরে স্ক্রল করে কোনো লাল error banner এসেছে কিনা দেখুন।</li><li>শেষ উপায়: পেজ refresh করুন।</li></ol></div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"খেয়াল করুন, এই পলিসিতে stack ডিলিট করার পারমিশন নেই, আর IAM-এ কিছু বদলানোর পারমিশনও নেই। GitHub শুধু বানাতে আর আপডেট করতে পারবে।"</div>
+</div></div>
+
+<div class="step" data-id="s4b"><div class="shead"><input type="checkbox"><span class="snum">Step 4B</span><h3>Role বানান আর trust policy ঠিক করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>IAM → Roles → Create role</b> খুলে Trusted entity type বেছে নিন <b>Web identity</b>।</li>
+<li>Identity provider দিন <code>token.actions.githubusercontent.com</code>, আর Audience <code>sts.amazonaws.com</code>।</li>
+<li>যে GitHub ঘরগুলো আসবে সেখানে দিন: organization <code><span data-bind="owner">abuabddullah</span></code>, repository <code>bongodev-cloudformation-github-actions</code>, branch <code>main</code>। এরপর Next।</li>
+<li>Permissions-এ <code>bongodev-github-iac-lab-policy</code> টিক দিন, তারপর Next।</li>
+<li>Role name দিন <code>bongodev-github-iac-deploy-role</code>, তারপর <b>Create role</b>।</li>
+<li>Role খুলে <b>Trust relationships → Edit trust policy</b>-এ যান। যা আছে সব মুছে নিচের JSON পেস্ট করুন, তারপর <b>Update policy</b>।</li></ol>
+<pre id="trust"></pre>
+<div class="warn"><span class="tag">এই ধাপ বাদ দেবেন না</span>Wizard নিজে যে trust policy বানায়, সেটা <b>পুরনো ফরম্যাটের</b> (<code>repo:owner/repo:...</code>, ID ছাড়া)। আপনার নতুন রিপোর টোকেনে ID থাকবে, ফলে দুটো মিলবে না, আর workflow <code>Not authorized to perform sts:AssumeRoleWithWebIdentity</code> এরর দেবে। তাই উপরের JSON দিয়ে <b>পুরোটা বদলে দিতে হবে</b>। Owner ID বা Repo ID বসানো না থাকলে JSON-এ <code>&lt;OWNER_ID&gt;</code> দেখাবে। তখন আগে <a href="#s2">Step 2</a> শেষ করুন।</div>
+<div class="why"><span class="tag">কেন <code>StringEquals</code>, wildcard না</span><code>sub</code>-এ <code>*</code> দিলে (যেমন <code>repo:*</code>) GitHub-এর <b>যেকোনো</b> রিপো আপনার AWS-এ ঢুকতে পারত। হুবহু মিলিয়ে (StringEquals) দেওয়া মানে শুধু এই একটা রিপো, আর শুধু <code>main</code> branch। কেউ অন্য branch-এ push করলেও role পাবে না।</div>
+<div class="warn"><span class="tag">BLUR</span>এই JSON-এ Account ID আছে, এডিটে blur করবেন।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Wizard যে trust policy বানিয়েছে সেটা পুরনো ফরম্যাটের। আমার রিপো নতুন, তাই ID-সহ নতুন ফরম্যাট দিচ্ছি। শর্ত দুটো: টোকেন আমার জন্যই বানানো (aud), আর সেটা এসেছে ঠিক এই রিপোর main branch থেকে (sub)।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>02-iam-role-trust.png</code>: Trust relationships ট্যাব (Account ID blur করা)।</div>
+</div></div>
+
+<div class="step" data-id="s4c"><div class="shead"><input type="checkbox"><span class="snum">Step 4C</span><h3>Role ARN কপি করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<p>Role-এর Summary থেকে ARN কপি করুন। এটা দেখতে এরকম হবে:</p>
+<pre id="rolearn"></pre>
+<div class="why"><span class="tag">ARN কি গোপন?</span>না, ARN কোনো password বা key না। এটা শুধু role-এর ঠিকানা। ARN জানলেও কেউ role-টা ব্যবহার করতে পারবে না, কারণ trust policy শুধু আপনার রিপোকেই ঢুকতে দেয়। তবে এতে Account ID থাকে, তাই ভিডিওতে blur করবেন।</div>
+</div></div>
+
+<!-- PART C -->
+<h2 id="part-c">Part C — GitHub Variables আর প্রথম push</h2>
+
+<div class="step" data-id="s5"><div class="shead"><input type="checkbox"><span class="snum">Step 5</span><h3>Repository variables সেট করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>GitHub-এ রিপো খুলে <b>Settings → Secrets and variables → Actions</b>-এ যান।</li>
+<li><b>Variables</b> ট্যাব বেছে নিন। Secrets ট্যাবে দেবেন না।</li>
+<li><b>New repository variable</b> দিয়ে দুটো variable যোগ করুন:</li></ol>
+<table><tr><th>Name</th><th>Value</th></tr>
+<tr><td><code>AWS_ROLE_ARN</code></td><td class="mono" id="rolearn2"></td></tr>
+<tr><td><code>AWS_REGION</code></td><td><code data-bind="region">us-east-1</code></td></tr></table>
+<div class="why"><span class="tag">কেন Variables, Secrets না</span>এখানে কোনো গোপন তথ্য রাখা হচ্ছে না। Role ARN আর Region শুধু কনফিগারেশন। আসল "চাবি", মানে অস্থায়ী credential, প্রতিবার workflow চলার সময় OIDC দিয়ে নতুন করে তৈরি হয়। <code>AWS_ACCESS_KEY_ID</code> বা <code>AWS_SECRET_ACCESS_KEY</code> কোথাও বানাবেন না। Variable-এর নাম হুবহু মিলতে হবে, কারণ <code>deploy.yml</code>-এ লেখা আছে <code>${{ vars.AWS_ROLE_ARN }}</code>।</div>
+<div class="warn"><span class="tag">BLUR</span>Variables পেজে ARN দেখা যায়, blur করবেন।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Secrets না, Variables-এ রাখছি, কারণ এখানে কোনো গোপন চাবি নেই। চাবিটা প্রতিবার OIDC দিয়ে নতুন করে আসবে, আর এক ঘণ্টা পর নিজে থেকেই মেয়াদ শেষ হয়ে যাবে।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>03-github-variables.png</code> (ARN blur করা)।</div>
+</div></div>
+
+<div class="step" data-id="s6"><div class="shead"><input type="checkbox"><span class="snum">Step 6</span><h3>VS Code থেকে push করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<p>VS Code-এর টার্মিনালে, প্রজেক্ট ফোল্ডারের ভেতর থেকে, এক এক লাইন করে চালান:</p>
+<pre id="gitcmds"></pre>
+<ol><li><code>git init</code> এই ফোল্ডারকে একটা git রিপো বানায়। <code>git branch -M main</code> branch-এর নাম <code>main</code> করে দেয়, কারণ trust policy-তে <code>main</code> লেখা আছে।</li>
+<li><code>git add .</code> আর <code>git commit</code> সব ফাইল একটা snapshot-এ রাখে।</li>
+<li><code>git remote add origin</code> GitHub-এর ঠিকানা যোগ করে, আর <code>git push -u origin main</code> ফাইলগুলো পাঠিয়ে দেয়।</li>
+<li>আপনি আগে এই কম্পিউটার থেকে push করেছেন, তাই login চাওয়ার কথা না। চাইলে ব্রাউজারে sign in করবেন, টার্মিনালে password দেবেন না।</li>
+<li>GitHub-এর Code ট্যাবে <code>.github/workflows/deploy.yml</code> আছে কিনা দেখুন।</li></ol>
+<div class="why"><span class="tag">কেন এই push-এ ডিপ্লয় শুরু হবে</span><code>deploy.yml</code>-এ লেখা আছে: <code>main</code>-এ push হলে, <b>আর</b> <code>cloudformation.yaml</code> বা <code>deploy.yml</code> বদলালে workflow চলবে (<code>paths</code> filter)। প্রথম push-এ দুটো ফাইলই নতুন, তাই workflow সাথে সাথে শুরু হবে। আর এই কারণেই IAM সব আগে সেট করে নিয়েছি, নইলে প্রথম run-টাই ফেল করত।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"এখন শুধু git push করছি। AWS কনসোলে গিয়ে Create stack চাপব না। দেখি GitHub নিজে কী করে।"</div>
+</div></div>
+
+<!-- PART D -->
+<h2 id="part-d">Part D — Actions চলা দেখুন আর AWS-এ যাচাই করুন</h2>
+
+<div class="step" data-id="s7"><div class="shead"><input type="checkbox"><span class="snum">Step 7</span><h3>GitHub Actions run দেখুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>রিপোর <b>Actions</b> ট্যাবে যান। সেখানে <b>Deploy Ubuntu Nginx with CloudFormation</b> → সবচেয়ে নতুন run → job <b>Validate and deploy infrastructure</b> খুলুন।</li>
+<li>প্রতিটা ধাপ খুলে দেখান:
+<ul><li><b>Checkout repository:</b> runner-এ আপনার ফাইলগুলো কপি হলো।</li>
+<li><b>Configure temporary AWS credentials (OIDC):</b> এখানেই role assume হয়। এই ধাপ সবুজ হলে বুঝবেন trust policy ঠিক আছে।</li>
+<li><b>Confirm AWS identity:</b> <code>assumed-role/bongodev-github-iac-deploy-role/bongodev-iac-lab</code> দেখাবে। <b>BLUR:</b> এখানে Account ID আছে।</li>
+<li><b>Validate CloudFormation template:</b> AWS template-এর syntax পরীক্ষা করে।</li>
+<li><b>Create or update CloudFormation stack:</b> এটাই সবচেয়ে লম্বা ধাপ, ৩–৫ মিনিট লাগে। এখানে রেকর্ডিং pause করুন।</li>
+<li><b>Print website and infrastructure outputs:</b> একটা টেবিলে WebsiteURL, InstanceId ইত্যাদি দেখাবে।</li></ul></li>
+<li>সব ধাপ সবুজ টিক পেলে কাজ শেষ। <b>Instance ID</b> লিখে রাখুন, কারণ Part E-তে মিলিয়ে দেখতে হবে।</li></ol>
+<div class="why"><span class="tag">কেন role-এর নাম দেখাচ্ছে, আপনার নাম না</span><code>assumed-role/...</code> মানে এখানে কোনো IAM user কাজ করছে না, একটা role-এর অস্থায়ী সেশন কাজ করছে। CloudTrail-এ পরে দেখলেও বোঝা যাবে কোন কাজটা GitHub থেকে হয়েছে (<code>role-session-name: bongodev-iac-lab</code>)।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"OIDC ধাপ সবুজ হয়েছে, মানে AWS আমার রিপোকে চিনেছে। পরের ধাপে দেখা যাচ্ছে AWS-এর চোখে আমি একটা assumed role, আমার নিজের user না।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>04-actions-run-create.png</code>: সবুজ টিকসহ run-এর লিস্ট বা সারাংশ। <code>05-actions-steps-outputs.png</code>: সব ধাপ আর Outputs টেবিল (identity অংশ blur করা)।</div>
+</div></div>
+
+<div class="step" data-id="s8"><div class="shead"><input type="checkbox"><span class="snum">Step 8</span><h3>CloudFormation আর ওয়েবসাইট যাচাই করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>AWS-এ <b>CloudFormation → Stacks</b> খুলুন, Region <code data-bind="region">us-east-1</code>। সেখানে <code>bongodev-github-iac-dev</code> stack <b>CREATE_COMPLETE</b> দেখাবে।</li>
+<li><b>Resources</b> ট্যাবে দেখুন VPC, subnet, IGW, route table, SG আর EC2, সব এখানে আছে।</li>
+<li><b>Outputs</b> ট্যাব থেকে <b>WebsiteURL</b> কপি করে নতুন ট্যাবে খুলুন। লিংকটা <b>http</b>, https না।</li>
+<li>"Hello from bongoDev!" আর "Environment: dev" লেখা দেখা যাওয়ার কথা। প্রথমে না খুললে ২–৩ মিনিট অপেক্ষা করে আবার Refresh করুন।</li>
+<li><b>EC2 → Instances</b> খুলে Ubuntu, t3.micro, Running অবস্থা দেখুন। Tags-এ <code>Course = bongoDev-DevOps</code> আছে কিনা দেখুন।</li></ol>
+<div class="why"><span class="tag">CREATE_COMPLETE মানেই Nginx রেডি না</span>CloudFormation-এর দৃষ্টিতে EC2 instance চালু হলেই সেটা "complete"। কিন্তু চালু হওয়ার পর instance-এর ভেতরে <b>User Data</b> স্ক্রিপ্ট চলে: <code>apt-get update</code>, তারপর Nginx ইনস্টল, তারপর HTML লেখা। এতে আরও ১–৩ মিনিট লাগে। CloudFormation এই স্ক্রিপ্ট শেষ হওয়ার জন্য অপেক্ষা করে না, কারণ এই টেমপ্লেটে <code>cfn-signal</code> বা WaitCondition নেই।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"আমি একবারও EC2-তে Launch instance চাপিনি, SSH-ও করিনি। VPC থেকে শুরু করে ওয়েবসাইট পর্যন্ত সব YAML থেকে তৈরি হয়েছে।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>06-cfn-create-complete.png</code>, <code>07-cfn-resources.png</code>, <code>08-website.png</code>, <code>09-ec2-instance-before.png</code> (Instance ID আর Course tag যেন দেখা যায়)।</div>
+</div></div>
+
+<!-- PART E -->
+<h2 id="part-e">Part E — দ্বিতীয় push দিয়ে update প্রমাণ</h2>
+
+<div class="step" data-id="s9"><div class="shead"><input type="checkbox"><span class="snum">Step 9</span><h3>Tag বদলে push করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>VS Code-এ <code>cloudformation.yaml</code> খুলে <code>Value: bongoDev-DevOps</code> খুঁজুন। এটা <code>Course</code> key-এর ঠিক নিচের লাইনে আছে।</li>
+<li>শুধু value বদলে লিখুন <code>bongoDev-DevOps-Homework-V2</code>। Indentation অর্থাৎ সামনের space একই রাখবেন। এরপর Save।</li>
+<li>টার্মিনালে চালান:</li></ol>
+<pre>git add cloudformation.yaml
+git commit -m "Update EC2 Course tag through IaC"
+git push origin main</pre>
+<ol start="4"><li>Actions-এ নতুন run চালু হবে। CloudFormation-এ stack প্রথমে <b>UPDATE_IN_PROGRESS</b>, তারপর <b>UPDATE_COMPLETE</b> দেখাবে।</li>
+<li>EC2 → Instance → Tags খুলে দেখুন <code>Course = bongoDev-DevOps-Homework-V2</code> হয়েছে কিনা। <b>Instance ID আগেরটাই আছে কিনা</b> মিলিয়ে নিন।</li>
+<li>GitHub-এ commit-এর লিংক কপি করে রাখুন (Commits → এই commit), জমা দিতে লাগবে।</li></ol>
+<div class="why"><span class="tag">কেন নতুন সার্ভার হলো না</span><code>aws cloudformation deploy</code> প্রথমে দেখে <code>bongodev-github-iac-dev</code> নামে stack আছে কিনা। না থাকলে নতুন বানায়, থাকলে একটা <b>change set</b> বানায়, মানে আগের অবস্থা আর নতুন YAML-এর পার্থক্য। Tag বদলানো একটা "in-place" পরিবর্তন, তাই EC2 একই থাকে, শুধু tag আপডেট হয়। কিন্তু <code>InstanceType</code> বা <code>ImageId</code> বদলালে instance পুরোপুরি <b>replace</b> হতো, মানে নতুন ID আর নতুন IP।</div>
+<div class="why"><span class="tag">কেন HTML বদলে পরীক্ষা করছি না</span>User Data শুধু instance <b>প্রথমবার চালু হওয়ার সময়</b> চলে। YAML-এ HTML বদলালে CloudFormation User Data আপডেট করবে ঠিকই, কিন্তু চালু থাকা সার্ভারে স্ক্রিপ্টটা আর চলবে না, ফলে ওয়েবসাইট আগের মতোই থাকবে। তাই সেটা update প্রমাণের জন্য ভালো উপায় না।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"শুধু একটা tag বদলালাম। Instance ID আগেরটাই আছে, অর্থাৎ CloudFormation সার্ভার নতুন করে বানায়নি, শুধু পার্থক্যটুকু আপডেট করেছে।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>10-actions-run-update.png</code>, <code>11-cfn-update-complete.png</code> (Events ট্যাবে UPDATE_COMPLETE), <code>12-ec2-tag-updated.png</code> (একই Instance ID আর নতুন tag)।</div>
+</div></div>
+
+<div class="step" data-id="s9b"><div class="shead"><input type="checkbox"><span class="snum">ঐচ্ছিক</span><h3>হাতে workflow আবার চালান (Run workflow)</h3><span class="chev">▶</span></div><div class="sbody">
+<p>Actions → workflow → <b>Run workflow</b> → main চাপুন। কোনো পরিবর্তন না থাকলেও run সবুজ হবে।</p>
+<div class="why"><span class="tag">কেন সবুজ হয়</span><code>workflow_dispatch</code> থাকায় হাতে চালানো যায়। আর <code>--no-fail-on-empty-changeset</code> থাকায় "কিছু বদলায়নি" অবস্থাকে এরর না ধরে সফল হিসেবে গোনা হয়। এর মানে workflow যতবারই চালান, ফলাফল একই থাকে (<b>idempotent</b>)।</div>
+</div></div>
+
+<!-- PART F -->
+<h2 id="part-f">Part F — প্রমাণ জমা আর Cleanup</h2>
+
+<div class="step" data-id="s10"><div class="shead"><input type="checkbox"><span class="snum">Step 10</span><h3>Cleanup-এর আগে প্রমাণ মিলিয়ে নিন</h3><span class="chev">▶</span></div><div class="sbody">
+<ul><li><a href="#shots">স্ক্রিনশট লিস্টের</a> ১ থেকে ১২ নম্বর পর্যন্ত সব নেওয়া হয়েছে কিনা।</li>
+<li>রিপোর লিংক লিখে রাখা হয়েছে কিনা: <span class="b" id="repourl"></span></li>
+<li>দ্বিতীয় push-এর commit লিংক লিখে রাখা হয়েছে কিনা।</li></ul>
+<div class="why"><span class="tag">Commit লিংক কী, কোথায় পাবেন</span>জমা দেওয়ার সময় যে commit-এ <code>Course</code> tag বদলেছেন, তার লিংক চাওয়া হয়। এই লিংক খুললে ট্রেনার ঠিক কোন লাইন বদলেছে সেটা দেখতে পান, আর commit-এর পাশে সবুজ ✓-ও দেখেন, যা প্রমাণ করে push-এর পরে Actions সফলভাবে চলেছে।<br>
+<b>পাবেন যেভাবে:</b> রিপোর মূল পেজে <b>🕘 "N Commits"</b> → <b>"Update EC2 Course tag through IaC"</b> → address bar থেকে লিংক কপি করুন। লিংকটা দেখতে এরকম: <code>https://github.com/OWNER/REPO/commit/8c3c540ad7...</code>। অথবা টার্মিনালে <code>git log --oneline -3</code> চালিয়ে SHA নিন, তারপর রিপোর লিংকের শেষে <code>/commit/SHA</code> জুড়ে দিন।</div>
+<div class="why"><span class="tag">কেন আগে</span>Stack ডিলিট করলে ওয়েবসাইট, instance আর tag সব মুছে যাবে। তখন আর এগুলোর স্ক্রিনশট নেওয়া যাবে না।</div>
+</div></div>
+
+<div class="step" data-id="s11"><div class="shead"><input type="checkbox"><span class="snum">Step 11</span><h3>Stack ডিলিট করুন (AWS কনসোল থেকে)</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>CloudFormation → Stacks → bongodev-github-iac-dev → Delete</b> চাপুন, তারপর confirm করুন।</li>
+<li><b>Events</b> ট্যাবে Refresh চাপতে থাকুন। ৩–৫ মিনিট লাগে, এই সময়টা pause রাখুন। শেষে <b>DELETE_COMPLETE</b> দেখাবে। Stacks লিস্টের filter বদলে "Deleted" বেছে নিলে মুছে যাওয়া stack-টা দেখা যায়।</li>
+<li><b>EC2 → Instances</b> খুলে দেখুন instance <b>Terminated</b> হয়েছে কিনা। VPC লিস্টেও <code>bongodev-github-iac-dev-vpc</code> আর থাকার কথা না।</li></ol>
+<div class="why"><span class="tag">কেন কনসোল থেকে, GitHub থেকে না</span>GitHub-এর role-কে ইচ্ছা করেই <code>DeleteStack</code> পারমিশন দেওয়া হয়নি। Stack মোছার মতো ঝুঁকির কাজ আপনার নিজের admin user দিয়ে করবেন। CloudFormation-এর সুবিধা এখানেই: একটা Delete চাপলে VPC থেকে শুরু করে EC2 পর্যন্ত সবকিছু সঠিক ক্রমে মুছে যায়, আলাদা আলাদা খুঁজে মুছতে হয় না।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Stack ডিলিট করছি। CloudFormation নিজেই বুঝে নেয় কোনটা আগে মুছতে হবে: আগে EC2, তারপর subnet, তারপর VPC।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>13-cfn-delete-complete.png</code>, <code>14-ec2-terminated.png</code></div>
+<p class="small">CLI ব্যবহার করতে চাইলে Region ঠিক করা কমান্ড:</p>
+<pre id="delcli"></pre>
+</div></div>
+
+<div class="step" data-id="s12"><div class="shead"><input type="checkbox"><span class="snum">Step 12</span><h3>GitHub workflow Disable করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Actions → Deploy Ubuntu Nginx with CloudFormation</b> খুলে ডানদিকের <b>⋯</b> মেনু থেকে <b>Disable workflow</b> চাপুন।</li></ol>
+<div class="why"><span class="tag">কেন</span>এরপর আপনি রিপোতে README আর স্ক্রিনশট push করবেন। README-তে পরিবর্তন সাধারণত workflow চালু করে না (paths filter)। কিন্তু ভুল করে YAML বদলে ফেললে stack আবার তৈরি হবে আর বিল আসতে থাকবে। Disable করে রাখলে সেই ঝুঁকি থাকে না।</div>
+</div></div>
+
+<div class="step" data-id="s13"><div class="shead"><input type="checkbox"><span class="snum">Step 13</span><h3>IAM পরিষ্কার করুন (কোর্স শেষে বা এখনই)</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>IAM → Roles</b> থেকে <code>bongodev-github-iac-deploy-role</code> ডিলিট করুন।</li>
+<li><b>IAM → Policies</b>-এ Filter by Type বেছে নিন <b>Customer managed</b>, তারপর <code>bongodev-github-iac-lab-policy</code> ডিলিট করুন।</li>
+<li><b>IAM → Identity providers</b>-এর <code>token.actions.githubusercontent.com</code> এখন শুধু এই লাবই ব্যবহার করছে। কোর্সে পরে আবার GitHub Actions লাগলে এটা রেখে দিতে পারেন, কারণ provider থাকলে কোনো খরচ হয় না, আর role ছাড়া এটা একা কিছুই করতে পারে না। না লাগলে ডিলিট করে দিন।</li></ol>
+<div class="why"><span class="tag">কেন</span><code>Resource: "*"</code>-ওয়ালা একটা EC2 পলিসি অ্যাকাউন্টে অব্যবহৃত পড়ে থাকা নিরাপদ না। যে জিনিস কাজে লাগছে না, সেটা মুছে ফেলাই ভালো।</div>
+</div></div>
+
+<div class="step" data-id="s14" id="s14"><div class="shead"><input type="checkbox"><span class="snum">Step 14</span><h3>Submission README push করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>অ্যাসাইনমেন্টের মূল README সরিয়ে রাখুন</b> (মুছে না ফেলে):
+<pre>git mv README.md docs/assignment-instructions.md</pre>
+এই ফাইল হারিয়ে গেলে git ইতিহাস থেকে ফেরত আনা যায়: <code>git show HEAD:README.md &gt; docs/assignment-instructions.md</code></li>
+<li><b>নতুন submission <code>README.md</code> রিপোর root-এ রাখুন।</b> এতে থাকবে আর্কিটেকচার (Mermaid ডায়াগ্রাম, যা GitHub নিজেই ছবি হিসেবে দেখায়), OIDC trust-এর ব্যাখ্যা, ১৪টা স্ক্রিনশট, GitHub Actions আর CloudFormation-এর পার্থক্য, ৭টা প্রশ্নের উত্তর, আর নোট (Region-এর ভুল, wizard-এর পুরনো trust ফরম্যাট)। Commit লিংকটাও বসিয়ে দিন।</li>
+<li>স্ক্রিনশটগুলো রাখুন <code>docs/screenshots/</code>-এ, <b>ঠিক এই পেজের লিস্টের নামে</b>। নাম এক অক্ষর আলাদা হলেও ছবি দেখাবে না। Account ID আর Role ARN blur করা আছে কিনা দেখে নিন।</li>
+<li>এরপর push করুন:
+<pre>git add .
+git commit -m "Add submission report, screenshots and original instructions"
+git push origin main</pre>
+এতে ডিপ্লয় চালু হবে না, কারণ <code>paths</code> filter-এ README বা ছবি নেই, আর workflow আগেই disable করা।</li>
+<li>GitHub-এ ছবি আর ডায়াগ্রাম ঠিকমতো দেখাচ্ছে কিনা দেখুন। তারপর জমা দিন: <b>রিপোর লিংক + দ্বিতীয় push-এর commit লিংক</b>।</li>
+<li>ঐচ্ছিক: জমা দেওয়ার <b>পরে</b> পুরনো workflow run মুছে দিতে পারেন (<b>⋯ → Delete workflow run</b>)। রিপো public হলে এতে "Confirm AWS identity"-র log-এ থাকা Account ID-ও মুছে যাবে।</li></ol>
+</div></div>
+
+<!-- CODE -->
+<h2 id="code">ফাইলগুলো লাইন ধরে</h2>
+<div class="card">
+<h3><code>.github/workflows/deploy.yml</code></h3>
+<table>
+<tr><th style="width:40%">অংশ</th><th>কী করে, কেন</th></tr>
+<tr><td><code>on: push: branches: [main]</code><br><code>paths: [cloudformation.yaml, deploy.yml]</code></td><td>Workflow কখন চলবে সেটা ঠিক করে: শুধু main-এ push হলে, আর এই দুটো ফাইলের কোনোটা বদলালে। README বদলালে অকারণে ডিপ্লয় হয় না।</td></tr>
+<tr><td><code>workflow_dispatch:</code></td><td>Actions পেজে "Run workflow" বাটন যোগ করে, যাতে হাতে চালানো যায়।</td></tr>
+<tr><td><code>permissions: id-token: write</code></td><td><b>OIDC-র জন্য এটা না থাকলে চলবে না।</b> এই অনুমতি ছাড়া GitHub runner-কে JWT টোকেন দেবে না। <code>contents: read</code> দেওয়া আছে শুধু checkout করার জন্য, বাকি সব পারমিশন বন্ধ।</td></tr>
+<tr><td><code>concurrency: cancel-in-progress: false</code></td><td>দ্রুত পরপর দুটো push হলে দুটো ডিপ্লয় একসাথে stack বদলানোর চেষ্টা করবে না। দ্বিতীয়টা প্রথমটা শেষ হওয়ার জন্য অপেক্ষা করবে।</td></tr>
+<tr><td><code>aws-actions/configure-aws-credentials</code></td><td>AWS-এর নিজস্ব action। এটা JWT নেয়, <code>AssumeRoleWithWebIdentity</code> কল করে, তারপর অস্থায়ী credential environment-এ রেখে দেয়, যাতে পরের ধাপগুলো <code>aws</code> CLI চালাতে পারে।</td></tr>
+<tr><td><code>validate-template</code></td><td>ডিপ্লয়ের আগে YAML-এর syntax পরীক্ষা করে। ভুল থাকলে এখানেই থেমে যায়, AWS-এ কিছু বানানোর আগে।</td></tr>
+<tr><td><code>cloudformation deploy ... --no-fail-on-empty-changeset</code></td><td>Stack না থাকলে বানায়, থাকলে change set দিয়ে আপডেট করে। কোনো পরিবর্তন না থাকলেও run সফল হিসেবে গোনা হয়।</td></tr>
+</table>
+<h3 style="margin-top:20px"><code>cloudformation.yaml</code></h3>
+<table>
+<tr><th style="width:40%">অংশ</th><th>কী করে, কেন</th></tr>
+<tr><td><code>LatestUbuntuAmiId: AWS::SSM::Parameter::Value&lt;...&gt;</code></td><td>AMI ID কোডে লেখা নেই। প্রতিবার Canonical-এর SSM parameter থেকে সর্বশেষ Ubuntu 24.04 AMI নেওয়া হয়। এতে যেকোনো Region-এ চলে। তবে সময়ের সাথে AMI বদলাতে পারে, তাই production-এ সাধারণত AMI নির্দিষ্ট করে দেওয়া হয় (pin)।</td></tr>
+<tr><td>VPC → IGW → Route <code>0.0.0.0/0</code> → Subnet (<code>MapPublicIpOnLaunch</code>)</td><td>সার্ভারকে ইন্টারনেটে পৌঁছানোর রাস্তা দেয়: <code>apt-get</code> দিয়ে প্যাকেজ নামাতে, আর ওয়েবসাইট দেখাতে।</td></tr>
+<tr><td><code>DependsOn: DefaultRoute</code></td><td>Route তৈরি হওয়ার আগে EC2 চালু হলে User Data-র <code>apt-get</code> ইন্টারনেট পাবে না। তাই EC2-কে route-এর পরে বানানো হয়।</td></tr>
+<tr><td>SG: শুধু TCP 80</td><td>SSH (22) খোলা নেই, কোনো key pair-ও নেই। কেউ সার্ভারে লগইন করতে পারবে না, শুধু ওয়েবসাইট দেখতে পারবে।</td></tr>
+<tr><td><code>MetadataOptions: HttpTokens: required</code></td><td><b>IMDSv2</b> বাধ্যতামূলক করে, যা একটা নিরাপত্তা best practice। এতে SSRF আক্রমণ দিয়ে instance-এর metadata চুরি করা কঠিন হয়।</td></tr>
+<tr><td><code>UserData: !Sub |</code></td><td>প্রথমবার চালু হওয়ার সময় এই স্ক্রিপ্ট চলে: <code>apt-get install nginx</code>, তারপর HTML লেখা। <code>${Environment}</code>-এর জায়গায় <code>dev</code> বসে যায়। <code>set -euxo pipefail</code> মানে কোনো কমান্ড ফেল করলে স্ক্রিপ্ট সেখানেই থেমে যাবে।</td></tr>
+<tr><td><code>Outputs: WebsiteURL</code></td><td>Stack শেষ হলে ওয়েবসাইটের লিংক দেখায়। Workflow-এর শেষ ধাপ এটাই প্রিন্ট করে।</td></tr>
+</table>
+</div>
+
+<!-- TROUBLE -->
+<h2 id="trouble">এরর হলে</h2>
+<div class="card">
+<table>
+<tr><th>এরর / লক্ষণ</th><th>সম্ভাব্য কারণ</th><th>সমাধান</th></tr>
+<tr><td><code>Not authorized to perform sts:AssumeRoleWithWebIdentity</code></td><td>Trust policy-র <code>sub</code> মিলছে না। সবচেয়ে বেশি হয় wizard-এর পুরনো ফরম্যাট থেকে গেলে, অথবা Owner/Repo ID ভুল হলে।</td><td>Step 2 আর 4B আবার দেখুন। ID দুটো <code>api.github.com</code>-এর JSON থেকে হুবহু মিলিয়ে নিন। <code>aud</code> = <code>sts.amazonaws.com</code> কিনা দেখুন।</td></tr>
+<tr><td><code>Could not load credentials</code> / role-to-assume খালি</td><td>Variable-এর নাম ভুল, অথবা Secrets ট্যাবে রাখা হয়েছে</td><td>Variables ট্যাবে নাম হুবহু <code>AWS_ROLE_ARN</code> আর <code>AWS_REGION</code> কিনা দেখুন</td></tr>
+<tr><td>Workflow চালুই হচ্ছে না</td><td>পাথ ভুল, অথবা push main-এ যায়নি</td><td>GitHub-এ <code>.github/workflows/deploy.yml</code> আছে কিনা আর branch <code>main</code> কিনা দেখুন। অথবা Run workflow চাপুন।</td></tr>
+<tr><td><code>AccessDenied</code> (ec2/cloudformation/ssm)</td><td>Role-এ পলিসি attach হয়নি</td><td>Role → Permissions-এ <code>bongodev-github-iac-lab-policy</code> আছে কিনা দেখুন। AdministratorAccess দিয়ে এই সমস্যা "ঠিক" করবেন না।</td></tr>
+<tr><td><code>ROLLBACK_COMPLETE</code>, Events-এ লেখা <i>t3.micro is not supported in us-east-1e</i></td><td>Subnet-এর AZ AWS নিজে বেছে নেয়। us-east-1-এর একটা AZ-এ t3 চলে না।</td><td>Stack কনসোল থেকে ডিলিট করুন, তারপর Run workflow। AZ আবার এলোমেলোভাবে বাছাই হবে। বারবার একই এরর এলে আমাকে বলুন, subnet-এ <code>AvailabilityZone</code> নির্দিষ্ট করে দেব।</td></tr>
+<tr><td><code>ROLLBACK_COMPLETE</code> (অন্য কারণে)</td><td>Events ট্যাবে প্রথম <code>CREATE_FAILED</code> লাইনটা দেখুন</td><td>কারণ ঠিক করুন, তারপর <b>নিজের কনসোল থেকে</b> stack ডিলিট করে workflow আবার চালান। ROLLBACK_COMPLETE অবস্থার stack আপডেট করা যায় না।</td></tr>
+<tr><td>ওয়েবসাইট খুলছে না / timeout</td><td>Nginx এখনো ইনস্টল হচ্ছে, অথবা https দিয়ে খোলা হয়েছে</td><td><b>http://</b> দিয়ে খুলুন, তারপর ২–৪ মিনিট অপেক্ষা করুন। EC2-তে status checks পাস করেছে কিনা দেখুন।</td></tr>
+<tr><td>IAM Create policy-তে <b>Next কাজ করে না</b></td><td>Validator তখনো যাচাই শেষ করেনি, অথবা JSON-এ ডিফল্ট টেমপ্লেট থেকে গেছে</td><td>এডিটরের বাইরে ক্লিক করে অপেক্ষা করুন, Visual থেকে আবার JSON-এ যান, অথবা Ctrl+A দিয়ে মুছে আবার পেস্ট করুন (Step 4A)</td></tr>
+<tr><td><code>git push</code> রিজেক্ট (<i>fetch first</i>)</td><td>GitHub-এ repo বানানোর সময় README যোগ করা হয়েছিল</td><td>Repo ডিলিট করে খালি অবস্থায় আবার বানান। মনে রাখবেন, এতে Repo ID বদলে যাবে, তাই trust policy-ও আপডেট করতে হবে।</td></tr>
+</table>
+</div>
+
+<!-- SHOTS -->
+<h2 id="shots">README-র স্ক্রিনশট লিস্ট</h2>
+<p>এই নামগুলো ধরেই submission README বানানো হবে। সবগুলো <code>docs/screenshots/</code> ফোল্ডারে রাখুন।</p>
+<div class="card" id="shotlist"></div>
+<p class="small" style="margin-top:40px">উৎস: অ্যাসাইনমেন্টের README, deploy.yml, cloudformation.yaml আর iam/ ফোল্ডার, এবং GitHub-এর changelog "Immutable subject claims for GitHub Actions OIDC tokens" (২০২৬)। AWS আর GitHub কনসোলের মেনুর নাম মাঝেমধ্যে একটু বদলায়।</p>
+</main>
+</div>
+
+<script>
+const LS='aws-gha-cfn-oidc-guide-v1';
+function load(){try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return {}}}
+function save(s){try{localStorage.setItem(LS,JSON.stringify(s))}catch(e){}}
+let state=load(); state.done=state.done||{}; state.cfg=state.cfg||{}; state.shots=state.shots||{};
+const shots=[
+ ['01-oidc-provider.png','IAM Identity provider: token.actions.githubusercontent.com'],
+ ['02-iam-role-trust.png','Role trust policy, sub-এ ID সহ (Account ID blur)'],
+ ['03-github-variables.png','GitHub Variables: AWS_ROLE_ARN, AWS_REGION (ARN blur)'],
+ ['04-actions-run-create.png','প্রথম Actions run, সবুজ'],
+ ['05-actions-steps-outputs.png','সব ধাপ আর Outputs টেবিল (identity blur)'],
+ ['06-cfn-create-complete.png','Stack CREATE_COMPLETE'],
+ ['07-cfn-resources.png','Stack Resources ট্যাব'],
+ ['08-website.png','Hello from bongoDev! ওয়েবসাইট'],
+ ['09-ec2-instance-before.png','EC2: Instance ID, t3.micro, Course = bongoDev-DevOps'],
+ ['10-actions-run-update.png','দ্বিতীয় Actions run, সবুজ'],
+ ['11-cfn-update-complete.png','Stack UPDATE_COMPLETE (Events)'],
+ ['12-ec2-tag-updated.png','একই Instance ID, Course = ...-Homework-V2'],
+ ['13-cfn-delete-complete.png','Stack DELETE_COMPLETE'],
+ ['14-ec2-terminated.png','EC2 instance Terminated']
+];
+const sl=document.getElementById('shotlist');
+sl.innerHTML=shots.map(([f,d])=>`<label style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" data-shot="${f}" style="accent-color:var(--green);width:18px;height:18px"><code>${f}</code><span class="small">${d}</span></label>`).join('');
+sl.querySelectorAll('input').forEach(i=>{i.checked=!!state.shots[i.dataset.shot];i.addEventListener('change',()=>{state.shots[i.dataset.shot]=i.checked;save(state)})});
+const steps=[...document.querySelectorAll('.step')];
+function progress(){const n=steps.filter(s=>state.done[s.dataset.id]).length;document.getElementById('pct').textContent=n+' / '+steps.length;document.getElementById('barfill').style.width=(100*n/steps.length)+'%'}
+steps.forEach(s=>{
+  const cb=s.querySelector('.shead input');
+  cb.checked=!!state.done[s.dataset.id]; s.classList.toggle('done',cb.checked);
+  cb.addEventListener('click',e=>e.stopPropagation());
+  cb.addEventListener('change',()=>{state.done[s.dataset.id]=cb.checked;s.classList.toggle('done',cb.checked);save(state);progress();
+    if(cb.checked){s.classList.remove('open');const nx=steps[steps.indexOf(s)+1];if(nx&&!state.done[nx.dataset.id])nx.classList.add('open')}});
+  s.querySelector('.shead').addEventListener('click',()=>s.classList.toggle('open'));
+});
+const firstOpen=steps.find(s=>!state.done[s.dataset.id]); if(firstOpen)firstOpen.classList.add('open');
+progress();
+document.getElementById('expandAll').onclick=()=>{const any=steps.some(s=>!s.classList.contains('open'));steps.forEach(s=>s.classList.toggle('open',any))};
+document.getElementById('reset').onclick=function(){if(this.dataset.c){state.done={};state.shots={};save(state);location.reload()}else{this.dataset.c=1;this.textContent='নিশ্চিত? আবার চাপুন';setTimeout(()=>{delete this.dataset.c;this.textContent='টিক মুছুন'},3000)}};
+const ids={account:'cfg-account',owner:'cfg-owner',region:'cfg-region',ownerid:'cfg-ownerid',repoid:'cfg-repoid',repo:'cfg-repo'};
+for(const k in ids){const el=document.getElementById(ids[k]);if(state.cfg[k])el.value=state.cfg[k];el.addEventListener('input',()=>{state.cfg[k]=el.value.trim();save(state);render()})}
+function v(k,fb){const x=document.getElementById(ids[k]).value.trim();return x||fb}
+function setPre(id,txt){const p=document.getElementById(id);p.textContent=txt;const b=document.createElement('button');b.className='copy';b.textContent='Copy';
+  b.onclick=async()=>{try{await navigator.clipboard.writeText(txt);b.textContent='কপি হয়েছে'}catch(e){const r=document.createRange();r.selectNodeContents(p);const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='সিলেক্ট হয়েছে, Ctrl+C চাপুন'}setTimeout(()=>b.textContent='Copy',1800)};p.appendChild(b)}
+function render(){
+  const A=v('account','<AWS_ACCOUNT_ID>'),O=v('owner','<GITHUB_OWNER>'),R=v('region','us-east-1'),OI=v('ownerid','<OWNER_ID>'),RI=v('repoid','<REPO_ID>'),N=v('repo','bongodev-cloudformation-github-actions');
+  document.querySelectorAll('[data-bind]').forEach(e=>{e.textContent={owner:O,region:R}[e.dataset.bind]});
+  const api=`https://api.github.com/repos/${O}/${N}`; const a=document.getElementById('apiurl'); a.href=api; a.textContent=api;
+  const sub=`repo:${O}@${OI}/${N}@${RI}:ref:refs/heads/main`;
+  setPre('subject',sub);
+  const trust={Version:"2012-10-17",Statement:[{Effect:"Allow",Principal:{Federated:`arn:aws:iam::${A}:oidc-provider/token.actions.githubusercontent.com`},Action:"sts:AssumeRoleWithWebIdentity",Condition:{StringEquals:{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com","token.actions.githubusercontent.com:sub":sub}}}]};
+  setPre('trust',JSON.stringify(trust,null,2));
+  const arn=`arn:aws:iam::${A}:role/bongodev-github-iac-deploy-role`;
+  setPre('rolearn',arn); document.getElementById('rolearn2').textContent=arn;
+  setPre('gitcmds',`git init\ngit branch -M main\ngit add .\ngit commit -m "Add IaC and GitHub Actions automation"\ngit remote add origin https://github.com/${O}/${N}.git\ngit push -u origin main`);
+  document.getElementById('repourl').textContent=`https://github.com/${O}/${N}`;
+  setPre('delcli',`aws cloudformation delete-stack --stack-name bongodev-github-iac-dev --region ${R}\naws cloudformation wait stack-delete-complete --stack-name bongodev-github-iac-dev --region ${R}`);
+}
+render();
+
+</script>
+</body>
+</html>
